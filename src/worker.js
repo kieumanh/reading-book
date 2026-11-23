@@ -1,4 +1,5 @@
 import { sendWeekly, validEndpoint } from "./weekly.js";
+import { collectReferences } from "./references.js";
 import { journeyProgress, MAX_READING_LEVEL } from "../public/journey-score.js";
 
 const SESSION_AGE = 60 * 60 * 24 * 30;
@@ -15,12 +16,12 @@ class RequestError extends Error {
 
 export default {
   scheduled: sendWeekly,
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
 
     try {
-      return await route(request, url, env);
+      return await route(request, url, env, context);
     } catch (error) {
       if (error instanceof RequestError) return json({ error: error.message }, error.status);
       console.error(error.name, request.method, url.pathname.split("/").slice(0, 3).join("/"));
@@ -29,7 +30,7 @@ export default {
   }
 };
 
-async function route(request, url, env) {
+async function route(request, url, env, context) {
   const db = env.DB;
   const { method } = request;
   const path = url.pathname;
@@ -40,7 +41,7 @@ async function route(request, url, env) {
 
   if (path === "/api/health" && method === "GET") {
     await db.prepare("SELECT 1").first();
-    return json({ version: "1.2.0", status: "ok" });
+    return json({ version: "1.3.0", status: "ok" });
   }
   if ((path === "/api/register" || path === "/api/login") && method === "POST") {
     return authenticate(request, db, path === "/api/register");
@@ -112,6 +113,52 @@ async function route(request, url, env) {
     ]);
     return json({ items: items.results.map(row => JSON.parse(row.payload)), journey: progress.results[0] });
   }
+  if (path === "/api/tutor/week" && method === "GET") {
+    const dates = await db.prepare(
+      "SELECT day, chapters, books FROM study_days WHERE reader_id = ? AND day >= date('now','+7 hours','-13 days') ORDER BY day"
+    ).bind(reader.id).all();
+    return json({ days: dates.results });
+  }
+
+  const studyRoute = path.match(/^\/api\/tutor\/(notes|sources)\/([a-z0-9-]{1,64})$/);
+  if (studyRoute) {
+    const [, action, id] = studyRoute;
+    const entry = await db.prepare("SELECT payload FROM entries WHERE reader_id = ? AND id = ?")
+      .bind(reader.id, id).first();
+    const book = entry && JSON.parse(entry.payload);
+    if (book?.type !== "book") throw new RequestError(404, "Chưa tìm thấy sách trong thư viện của bạn.");
+    if (action === "sources" && method === "GET") {
+      return json(await tutorReferences(db, reader.id, book, url.origin, context));
+    }
+    if (action === "notes" && method === "GET") {
+      const notes = await db.prepare(
+        "SELECT chapter, part, note, updated_at AS updated FROM study_notes WHERE reader_id = ? AND book_id = ? ORDER BY chapter"
+      ).bind(reader.id, id).all();
+      return json({ notes: notes.results });
+    }
+    if (action === "notes" && method === "PUT") {
+      const data = await readJson(request, 16000);
+      const chapter = data.chapter;
+      if (!Number.isSafeInteger(chapter) || chapter < 1 || chapter > book.total) {
+        throw new RequestError(400, "Chọn số chương trong sách.");
+      }
+      const part = field(data.part, 120);
+      const note = field(data.note, 2200);
+      if (!note) throw new RequestError(400, "Nhập điều bạn ghi nhớ về chương này.");
+      const saved = await db.prepare(
+        `INSERT INTO study_notes (reader_id, book_id, chapter, part, note, updated_at)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE
+           EXISTS (SELECT 1 FROM entries WHERE reader_id = ?1 AND id = ?2) AND
+           (EXISTS (SELECT 1 FROM study_notes WHERE reader_id = ?1 AND book_id = ?2 AND chapter = ?3)
+             OR (SELECT count(*) FROM study_notes WHERE reader_id = ?1 AND book_id = ?2) < 500)
+         ON CONFLICT (reader_id, book_id, chapter) DO UPDATE SET
+           part = excluded.part, note = excluded.note, updated_at = excluded.updated_at
+         RETURNING chapter, part, note, updated_at AS updated`
+      ).bind(reader.id, id, chapter, part, note, Date.now()).first();
+      if (!saved) throw new RequestError(409, "Mỗi sách lưu tối đa 500 chương ghi chú. Kiểm tra lại sách hoặc sửa một chương đã có.");
+      return json({ note: saved });
+    }
+  }
   if (path === "/api/journey/seen" && method === "PUT") {
     const { level } = await readJson(request, 256);
     if (!Number.isInteger(level) || level < 1 || level > MAX_READING_LEVEL) {
@@ -167,6 +214,35 @@ function journeyQuery(db, readerId) {
             coalesce((SELECT level FROM reading_awards_seen WHERE reader_id = ?1), 0) AS seen
      FROM reading_credit WHERE reader_id = ?1`
   ).bind(readerId);
+}
+
+async function tutorReferences(db, readerId, book, origin, context) {
+  if (![book.title, book.author].every(value => /[\p{L}\p{N}]/u.test(value))) {
+    return { sources: [], related: [], reachable: true, checkedAt: Date.now() };
+  }
+  const cache = globalThis.caches?.default;
+  const key = new Request(origin + "/.tutor-cache/" + await hash(JSON.stringify([book.title, book.author])));
+  if (cache) {
+    const cached = await cache.match(key).catch(() => null);
+    if (cached) return cached.json();
+  }
+  const bucket = await hash("tutor:" + readerId);
+  const time = now();
+  const limit = await db.prepare(
+    `INSERT INTO auth_attempts (id, attempts, expires_at) VALUES (?1, 1, ?2)
+     ON CONFLICT (id) DO UPDATE SET
+       attempts = CASE WHEN expires_at <= ?3 THEN 1 ELSE attempts + 1 END,
+       expires_at = CASE WHEN expires_at <= ?3 THEN ?2 ELSE expires_at END
+     RETURNING attempts`
+  ).bind(bucket, time + 3600, time).first();
+  if (limit.attempts > 12) throw new RequestError(429, "Mầm đã tra cứu nhiều lần. Anh có thể thử lại sau hoặc dùng nguồn đã lưu.");
+  const results = await collectReferences(book);
+  if (cache && context && results.reachable) {
+    const seconds = results.sources.length ? 86400 : 900;
+    const saved = Response.json(results, { headers: { "Cache-Control": "public, max-age=" + seconds } });
+    context.waitUntil(cache.put(key, saved).catch(() => {}));
+  }
+  return results;
 }
 
 async function authenticate(request, db, registering) {

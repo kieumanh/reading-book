@@ -1,7 +1,10 @@
-import { samples, views } from "./catalog.js?v=1.2.0";
+import { samples, views } from "./catalog.js?v=1.3.0";
 import { getJourneyLevel, journeyLevelDetails, journeyOverview, journeyReward, journeyView } from "./journey.js";
 import { bookCredit, journeyProgress } from "./journey-score.js";
 import { quotes } from "./quotes.js";
+import { authPage } from "./auth-page.js";
+import { mamFigure, playMam } from "./mam-scenes.js";
+import { createTutor } from "./tutor.js";
 
 const ICONS = {
   dashboard: '<rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/>',
@@ -29,7 +32,7 @@ const reward = $("#journey-reward");
 const sortCollator = new Intl.Collator("vi", { sensitivity: "base" });
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 const guestDefaults = { name: "Bạn đọc", avatar: "", theme: "auto", reminders: true, fireworks: true };
-const keys = { items: "readingbook-demo-v1", profile: "readingbook-guest-v1", reminder: "readingbook-quote-v1", journey: "readingbook-demo-journey-v1" };
+const keys = { items: "readingbook-demo-v1", profile: "readingbook-guest-v1", reminder: "readingbook-quote-v1", journey: "readingbook-demo-journey-v1", email: "reading-book-remember-email" };
 const state = {
   user: null,
   guest: readLocal(keys.profile, guestDefaults),
@@ -44,8 +47,31 @@ const state = {
   pending: false,
   offline: false,
   weekly: null,
-  install: null
+  install: null,
+  authReturn: "tong-quan"
 };
+
+const accountViews = [
+  { id: "dang-nhap", label: "Đăng nhập" },
+  { id: "dang-ky", label: "Đăng ký" }
+];
+const tutor = createTutor({
+  api,
+  isVisible: () => state.view === "gia-su",
+  motion: () => !document.hidden,
+  toast: showToast,
+  repaint: preserve => {
+    const field = document.activeElement;
+    if (state.view !== "gia-su" || (preserve && field?.closest?.(".tutor-page") && field.matches("input,textarea,select"))) return;
+    render();
+  }
+});
+
+function playPageScene() {
+  if (state.view === "gia-su") tutor.open();
+  if (state.view === "tong-quan") playMam($(".reading-hero"), "greet-4");
+  if (accountViews.some(view => view.id === state.view)) playMam($(".auth-illustration"), "greet-1");
+}
 
 function readLocal(key, fallback) {
   try {
@@ -173,14 +199,21 @@ function overview() {
   const stat = (glyph, value, label) => `<div class="stat"><span class="stat-icon">${icon(glyph)}</span><div><strong>${value}</strong><small>${label}</small></div></div>`;
 
   return `${titleRow("Hôm nay đọc gì?", state.user ? `Chào ${escapeHtml(state.user.name)}. Thư viện của bạn ở đây.` : "Theo dõi những trang đã đọc và những câu chuyện đang nghe.", addButton())}
-    <section class="hero" aria-label="Chào mừng đến Reading Book">
+    <section class="hero reading-hero" aria-label="Chào mừng đến Reading Book">
       <div class="hero-content">
-        <p class="hero-script">Mỗi chương, một bước.</p>
-        <h2>Ghé lại cùng<br>một trang sách.</h2>
-        <p>Đọc, nghe và lưu lại tiến độ theo nhịp của bạn.</p>
-        ${feature ? button(isBook(feature) ? "Đọc tiếp" : "Nghe tiếp", "detail", { extra: "hero-button", glyph: "arrow", data: `data-id="${feature.id}"` }) : navButton("Mở thư viện", "sach-doc", false)}
+        <h2>Mở một trang,<br>thêm một chặng!</h2>
+        <p>Đọc sách, mở huy hiệu và ôn lại điều đáng nhớ cùng sóc Mầm.</p>
+        <div class="form-actions">
+          ${feature ? button(isBook(feature) ? "Đọc tiếp" : "Nghe tiếp", "detail", { extra: "hero-button", glyph: "arrow", data: `data-id="${feature.id}"` }) : navButton("Mở thư viện", "sach-doc", false)}
+          <a href="#gia-su" class="button secondary reading-tutor-cta">${icon("spark")} Học cùng Mầm</a>
+        </div>
       </div>
+      <div class="reading-hero-figure">${mamFigure("read")}</div>
     </section>
+    <div class="reading-shortcuts">
+      <a href="#gia-su" class="reading-shortcut"><span>${icon("spark")}</span><div><strong>Gia sư Mầm</strong><small>Ghi chú và ôn sách</small></div>${icon("arrow")}</a>
+      <button data-action="tutor-open-week" class="reading-shortcut" type="button"><span>${icon("chart")}</span><div><strong>Nhịp đọc tuần</strong><small>Chương, sách và ngày đọc</small></div>${icon("arrow")}</button>
+    </div>
     ${journeyOverview(journeyRecord())}
     <div id="weekly-reading-reminder">${weeklyReadingReminder()}</div>
     <section class="section">
@@ -247,6 +280,8 @@ function library() {
   const description = starred ? "Những mục bạn muốn dành thời gian trước." : (podcast ? "Lưu podcast và nhớ tập đang nghe." : "Ghi lại sách, từng chương và chỗ bạn dừng.");
   const categories = [...new Set(baseShelf().map(item => item.category).filter(Boolean))].sort(sortCollator.compare);
   return `${titleRow(label, description, starred ? "" : addButton(podcast ? "Thêm podcast" : "Thêm sách"))}
+    <nav class="shelf-links" aria-label="Các phần thư viện">${views.filter(item => ["sach-doc","podcast","danh-dau"].includes(item.id)).map(item =>
+      `<a href="#${item.id}" ${item.id === state.view ? 'aria-current="page"' : ""}>${icon(item.icon)}${item.label}</a>`).join("")}</nav>
     <div class="controls">
       <label class="control-label">Tìm trong thư viện<input type="search" id="search" placeholder="Tên, tác giả hoặc thể loại" value="${escapeHtml(state.filters.query)}"></label>
       <label class="control-label">Thể loại<select id="category-filter"><option value="">Tất cả thể loại</option>${categories.map(category =>
@@ -368,12 +403,15 @@ async function subscribeWeekly(weekday) {
 }
 
 function render() {
-  const view = views.find(item => item.id === location.hash.slice(1)) || views[0];
+  const hashView = location.hash.slice(1);
+  const accountView = accountViews.find(item => item.id === hashView);
+  const view = views.find(item => item.id === hashView) || (!state.user && accountView) || views[0];
+  document.body.dataset.view = view.id;
   if (view.id !== state.view) {
     state.view = view.id;
     state.filters = { query: "", category: "", status: "" };
   }
-  $("#navigation").innerHTML = views.map(item => `<a class="nav-link" href="#${item.id}" ${item.id === state.view ? 'aria-current="page"' : ""}>
+  $("#navigation").innerHTML = views.map(item => `<a class="nav-link${item.desktopOnly ? " nav-desktop-only" : ""}" href="#${item.id}" ${item.id === state.view ? 'aria-current="page"' : ""}>
     ${icon(item.icon)}<span class="nav-full">${item.label}</span><span class="nav-short">${item.mobile}</span>
   </a>`).join("");
   $("#breadcrumb").textContent = view.label;
@@ -387,12 +425,15 @@ function render() {
   switch (state.view) {
     case "tong-quan": content.innerHTML = overview(); break;
     case "cai-dat": content.innerHTML = settings(); break;
+    case "gia-su": content.innerHTML = tutor.view(); break;
+    case "dang-nhap":
+    case "dang-ky": content.innerHTML = authPage(state.view === "dang-ky", readLocal(keys.email, "")); break;
     case "hanh-trinh":
       content.innerHTML = journeyView(journeyRecord(), { demo: !state.user, avatar: avatar ? `<img src="${avatar}" alt="">` : "" });
       break;
     default: content.innerHTML = library();
   }
-  if (state.offline) content.insertAdjacentHTML("afterbegin", '<p class="note">Không kết nối được tài khoản. Dữ liệu đang hiển thị thuộc chế độ dùng thử.</p>');
+  if (state.offline && !["gia-su","dang-nhap","dang-ky"].includes(state.view)) content.insertAdjacentHTML("afterbegin", '<p class="note">Không kết nối được tài khoản. Dữ liệu đang hiển thị thuộc chế độ dùng thử.</p>');
   refreshResults();
   applyTheme();
 }
@@ -403,7 +444,7 @@ function applyTheme() {
   const theme = configured !== "auto" ? configured : hour >= 21 || hour < 5 ? "dark" :
     hour < 9 ? "morning" : hour >= 17 ? "dusk" : "light";
   document.documentElement.dataset.theme = theme;
-  $('meta[name="theme-color"]').setAttribute("content", theme === "dark" ? "#132820" : "#244636");
+  $('meta[name="theme-color"]').setAttribute("content", theme === "dark" ? "#182136" : "#f8f9ff");
 }
 
 function getDay() {
@@ -480,6 +521,7 @@ function itemDetail(item) {
       <div class="form-actions">
         ${button("Lưu tiến độ", "", { type: "submit" })}
         ${canLink ? `<a class="button secondary" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">${isBook(item) ? "Mở link đọc" : "Mở link nghe"}${icon("arrow")}</a>` : ""}
+        ${isBook(item) ? button("Ôn cùng Mầm", "tutor-open-book", { extra: "secondary", glyph: "spark", data: `data-id="${item.id}"` }) : ""}
         ${button("Chỉnh sửa", "edit", { extra: "secondary", data: `data-id="${item.id}"` })}
         ${button("Xóa", "confirm-remove", { extra: "secondary danger", data: `data-id="${item.id}"` })}
       </div>
@@ -488,17 +530,9 @@ function itemDetail(item) {
 }
 
 function authForm(registering) {
-  openEditor(registering ? "Tạo tài khoản" : "Đăng nhập", `<form class="form" data-form="${registering ? "register" : "login"}">
-    ${registering ? '<label class="control-label">Tên hiển thị<input name="name" maxlength="60" autocomplete="nickname" required></label>' : ""}
-    <label class="control-label">${registering ? "Email" : "Email hoặc tên đăng nhập"}<input type="${registering ? "email" : "text"}" name="username" maxlength="254" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required></label>
-    <label class="control-label">Mật khẩu<input name="password" type="password" minlength="10" maxlength="128" autocomplete="${registering ? "new-password" : "current-password"}" required></label>
-    ${registering ? '<label class="control-label">Nhập lại mật khẩu<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><p class="hint">Dùng ít nhất 10 ký tự.</p>' : ""}
-    <p class="error" role="alert" hidden></p>
-    <div class="form-actions">
-      ${button(registering ? "Tạo tài khoản" : "Đăng nhập", "", { type: "submit" })}
-      ${button(registering ? "Đã có tài khoản" : "Tạo tài khoản", registering ? "login" : "register", { extra: "secondary" })}
-    </div>
-  </form>`);
+  if (editor.open) editor.close();
+  if (!accountViews.some(view => view.id === state.view)) state.authReturn = state.view || "tong-quan";
+  location.hash = registering ? "dang-ky" : "dang-nhap";
 }
 
 function openReminder() {
@@ -583,10 +617,11 @@ function showNewJourneyReward(withinDialog = false) {
   if (seen >= level || editor.open || reminder.open || (reward.open && !withinDialog)) return false;
   const next = getJourneyLevel(seen + 1);
   reward.dataset.level = String(next.level);
-  reward.innerHTML = journeyReward(next, level - next.level);
+  reward.innerHTML = journeyReward(next, level - next.level) + mamFigure("celebrate", "reward-mam");
   if (reward.open) reward.querySelector("[autofocus]").focus();
   else reward.showModal();
   burstFireworks(reward, 33);
+  playMam(reward, "celebrate-1");
   return true;
 }
 
@@ -637,13 +672,18 @@ async function saveItem(item) {
     const result = await api("library/" + item.id, "PUT", item);
     state.items = [result.item, ...state.items.filter(previous => previous.id !== item.id)];
     applyJourney(result.journey);
+    tutor.invalidateWeek();
   } else {
+    const beforeChapters = state.demoJourney.chapters;
+    const beforeBooks = state.demoJourney.books;
     const library = [{ ...item, updated: Date.now() }, ...state.demo.filter(previous => previous.id !== item.id)];
     writeLocal(keys.items, library);
     state.demo = library;
     trackDemoReading(state.demoJourney, item.id, bookCredit(item));
     persistDemoJourney();
+    tutor.recordDemo(state.demoJourney.chapters - beforeChapters, state.demoJourney.books - beforeBooks);
   }
+  tutor.sync(allItems(), state.user, state.offline);
 }
 
 async function removeItem(id) {
@@ -655,6 +695,7 @@ async function removeItem(id) {
     writeLocal(keys.items, library);
     state.demo = library;
   }
+  tutor.sync(allItems(), state.user, state.offline);
 }
 
 async function saveProfile(next) {
@@ -698,6 +739,8 @@ function getItem(id) {
 async function submit(form) {
   const fields = Object.fromEntries(new FormData(form));
   const kind = form.dataset.form;
+  if (kind === "tutor-note") { await tutor.saveNote(fields); return; }
+  if (kind === "tutor-question") { tutor.ask(fields.question); return; }
   if (kind === "weekly") {
     const { weekday } = await api("weekly", "PUT", { weekday: Number(fields.weekday) });
     state.weekly = { ...state.weekly, weekday };
@@ -709,19 +752,28 @@ async function submit(form) {
   if (kind === "register" || kind === "login") {
     if (kind === "register" && fields.password !== fields.confirmPassword) throw Error("Mật khẩu xác nhận chưa khớp.");
     const { user } = await api(kind, "POST", fields);
+    if (kind === "login") {
+      try { writeLocal(keys.email, fields.remember ? user.username : ""); } catch { /* The login already succeeded. */ }
+    }
+    let loaded = false;
     try {
       const { items, journey } = await api("library");
       state.items = items;
       state.journey = journey;
+      loaded = true;
     } catch (error) {
       state.items = [];
       state.journey = null;
       showToast(error.message);
     }
     state.user = user;
-    state.offline = false;
-    editor.close();
+    state.offline = !loaded;
+    tutor.sync(allItems(), state.user, state.offline);
+    if (editor.open) editor.close();
+    history.replaceState(null, "", "#" + state.authReturn);
     render();
+    playPageScene();
+    tutor.autoLearn();
     void loadWeekly();
     showToast(kind === "register" ? "Đã tạo tài khoản." : "Đã đăng nhập.");
     showNewJourneyReward();
@@ -817,10 +869,27 @@ document.addEventListener("submit", async event => {
 document.addEventListener("click", async event => {
   const target = event.target.closest("button[data-action]");
   if (!target) return;
+  if (tutor.click(target)) return;
   const { action, id, delta } = target.dataset;
   const item = id && getItem(id);
 
   switch (action) {
+    case "auth-password": {
+      const input = $("#auth-password");
+      if (!input) break;
+      const showing = input.type === "password";
+      input.type = showing ? "text" : "password";
+      target.setAttribute("aria-pressed", String(showing));
+      target.setAttribute("aria-label", showing ? "Ẩn mật khẩu" : "Hiện mật khẩu");
+      break;
+    }
+    case "tutor-open-book":
+      if (item && !state.pending) { editor.close(); tutor.selectBook(item.id); location.hash = "gia-su"; }
+      break;
+    case "tutor-open-week":
+      tutor.selectTab("week");
+      location.hash = "gia-su";
+      break;
     case "add": openItemForm(); break;
     case "edit": if (item) openItemForm(item); break;
     case "detail": if (item) itemDetail(item); break;
@@ -925,6 +994,8 @@ document.addEventListener("click", async event => {
         state.weekly = null;
         state.items = [];
         state.journey = null;
+        state.offline = false;
+        tutor.sync(allItems(), null);
         if (state.view === "tong-quan") render();
         else location.hash = "tong-quan";
         showToast("Đã đăng xuất.");
@@ -950,6 +1021,7 @@ document.addEventListener("input", event => {
 });
 
 document.addEventListener("change", event => {
+  if (tutor.change(event.target)) return;
   const { id, value } = event.target;
   if (id === "journey-land-picker") focusJourney(`#journey-land-${Number(value)}`);
   if (id === "category-filter" || id === "status-filter") {
@@ -973,8 +1045,9 @@ editor.addEventListener("cancel", event => {
 });
 
 window.addEventListener("hashchange", () => {
-  if (!views.some(view => view.id === location.hash.slice(1))) return;
+  if (![...views,...accountViews].some(view => view.id === location.hash.slice(1))) return;
   render();
+  playPageScene();
   content.focus({ preventScroll: true });
   window.scrollTo(0, 0);
 });
@@ -985,32 +1058,63 @@ window.addEventListener("beforeinstallprompt", event => {
   if (state.view === "cai-dat") render();
 });
 
+let starting = false;
 async function start() {
-  state.demoJourney = loadDemoJourney();
-  state.quote = getDay() % quotes.length;
-  state.dismissed = readLocal(keys.reminder, "");
-  render();
+  if (starting) return;
+  starting = true;
+  const previousUser = state.user;
+  if (!state.view) {
+    state.demoJourney = loadDemoJourney();
+    tutor.sync(state.demo, null, false, true);
+    state.quote = getDay() % quotes.length;
+    state.dismissed = readLocal(keys.reminder, "");
+    render();
+    playPageScene();
+  }
   try {
     const { user } = await api("session");
+    if (state.user !== previousUser) return;
+    const refreshView = user || previousUser || state.offline;
     if (user) {
       const { items, journey } = await api("library");
+      if (state.user !== previousUser) return;
       state.user = user;
       state.items = items;
       state.journey = journey;
+      if (accountViews.some(view => "#" + view.id === location.hash)) history.replaceState(null, "", "#tong-quan");
+    } else {
+      state.user = null;
+      state.items = [];
+      state.journey = null;
+      state.weekly = null;
+    }
+    state.offline = false;
+    tutor.sync(allItems(), user);
+    if (refreshView) {
       render();
+      playPageScene();
+    }
+    if (user) {
+      tutor.autoLearn();
       void loadWeekly();
       showNewJourneyReward();
     }
   } catch {
+    if (state.user !== previousUser) return;
     state.offline = true;
+    tutor.sync(state.demo, state.user, true);
     render();
+    playPageScene();
+  } finally {
+    starting = false;
   }
 }
 
 setInterval(() => { applyTheme(); refreshWeeklyReminder(); }, 60_000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) { applyTheme(); refreshWeeklyReminder(); }
+  if (!document.hidden) { applyTheme(); refreshWeeklyReminder(); tutor.autoLearn(); }
 });
+window.addEventListener("online", () => { if (state.offline && !state.pending) void start(); else tutor.autoLearn(); });
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }

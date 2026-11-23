@@ -40,8 +40,9 @@ export const samples = [
 export const views = [
   { id: "tong-quan", label: "Tổng quan", mobile: "Tổng quan", icon: "dashboard" },
   { id: "sach-doc", label: "Sách đọc", mobile: "Sách", icon: "book" },
-  { id: "podcast", label: "Podcast", mobile: "Podcast", icon: "headphones" },
+  { id: "podcast", label: "Podcast", mobile: "Podcast", icon: "headphones", desktopOnly: true },
   { id: "hanh-trinh", label: "Hành trình", mobile: "Hành trình", icon: "map" },
-  { id: "danh-dau", label: "Đánh dấu sao", mobile: "Có sao", icon: "star" },
+  { id: "danh-dau", label: "Đánh dấu sao", mobile: "Có sao", icon: "star", desktopOnly: true },
+  { id: "gia-su", label: "Gia sư Mầm", mobile: "Gia sư", icon: "spark" },
   { id: "cai-dat", label: "Cài đặt", mobile: "Cài đặt", icon: "settings" }
 ];
