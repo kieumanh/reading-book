@@ -175,6 +175,7 @@ function overview() {
         ${feature ? button(isBook(feature) ? "Đọc tiếp" : "Nghe tiếp", "detail", { extra: "hero-button", glyph: "arrow", data: `data-id="${feature.id}"` }) : navButton("Mở thư viện", "sach-doc", false)}
       </div>
     </section>
+    <div id="weekly-reading-reminder">${weeklyReadingReminder()}</div>
     <section class="section">
       ${sectionHead("Tiến độ thư viện")}
       <div class="stats">
@@ -197,6 +198,22 @@ function overview() {
     </section>` : ""}
     ${reminderStrip()}
     ${state.user ? "" : `<div class="note">${icon("user")}<span>Bạn đang dùng thử với dữ liệu minh họa. Mục thêm ở chế độ này lưu trong trình duyệt.</span>${button("Tạo tài khoản", "register", { extra: "secondary" })}</div>`}`;
+}
+
+function weeklyReadingReminder() {
+  const local = new Date(Date.now() + 7 * 3600000);
+  if (state.user?.weeklyDay !== local.getUTCDay() || local.getUTCHours() < 19) return "";
+  return `<div class="note" role="status">
+    ${icon("bell")}<span>Đến hẹn đọc sách hằng tuần. Mở thư viện để tiếp tục từ chỗ bạn đã dừng.</span>
+    ${navButton("Mở thư viện", "sach-doc")}
+  </div>`;
+}
+
+function refreshWeeklyReminder() {
+  const region = $("#weekly-reading-reminder");
+  if (!region) return;
+  const reminder = weeklyReadingReminder();
+  if (Boolean(region.firstElementChild) !== Boolean(reminder)) region.innerHTML = reminder;
 }
 
 function reminderStrip() {
@@ -293,20 +310,22 @@ function settings() {
 
 function weeklySettings() {
   const weekly = state.weekly;
-  const enabled = Number.isInteger(weekly?.weekday);
+  const day = weekly?.weekday ?? state.user?.weeklyDay;
+  const enabled = Number.isInteger(day);
   return `<section class="panel"><h2>Thông báo hằng tuần</h2>
-    ${state.user ? `<p>Nhận lời nhắc đọc sách lúc 19:00 (giờ Việt Nam), vào ngày bạn chọn. Lịch áp dụng cho phiên đăng nhập trên trình duyệt này.</p>
+    ${state.user ? `<p>Lời nhắc xuất hiện trong Reading Book từ 19:00 giờ Việt Nam, vào ngày bạn chọn.</p>
       <form class="form" data-form="weekly">
         <label class="control-label">Ngày gửi<select name="weekday">
-          ${weekdays.map((day, index) => `<option value="${index}" ${index === (weekly?.weekday ?? 1) ? "selected" : ""}>${day}</option>`).join("")}
+          ${weekdays.map((day, index) => `<option value="${index}" ${index === (day ?? 1) ? "selected" : ""}>${day}</option>`).join("")}
         </select></label>
-        <p class="hint">${enabled ? "Đã bật lời nhắc vào " + weekdays[weekly.weekday] + "." : "Chưa bật lời nhắc hằng tuần."}</p>
+        <p class="hint">${enabled ? "Đã bật lời nhắc vào " + weekdays[day] + "." : "Chưa bật lời nhắc hằng tuần."}</p>
         <p class="error" role="alert" hidden></p>
         <div class="form-actions">
-          ${button(enabled ? "Lưu ngày gửi" : "Bật thông báo", "", { type: "submit" })}
+          ${button(enabled ? "Lưu ngày gửi" : "Bật lời nhắc", "", { type: "submit" })}
+          ${weekly?.key ? button("Bật trên trình duyệt", "weekly-browser", { extra: "secondary" }) : ""}
           ${enabled ? button("Tắt thông báo", "weekly-off", { extra: "secondary" }) : ""}
         </div>
-      </form>` : "<p>Đăng nhập để chọn ngày gửi và bật thông báo trên trình duyệt.</p>"}
+      </form>` : "<p>Đăng nhập để chọn ngày nhận lời nhắc.</p>"}
   </section>`;
 }
 
@@ -571,7 +590,9 @@ async function submit(form) {
   const fields = Object.fromEntries(new FormData(form));
   const kind = form.dataset.form;
   if (kind === "weekly") {
-    await subscribeWeekly(Number(fields.weekday));
+    const { weekday } = await api("weekly", "PUT", { weekday: Number(fields.weekday) });
+    state.weekly = { ...state.weekly, weekday };
+    state.user.weeklyDay = weekday;
     render();
     showToast("Đã lưu lịch thông báo hằng tuần.");
     return;
@@ -735,6 +756,22 @@ document.addEventListener("click", async event => {
       try { writeLocal(keys.reminder, state.dismissed); } catch { /* Dismissal still works in this tab. */ }
       $("#daily-reminder")?.remove();
       break;
+    case "weekly-browser":
+      if (state.pending) break;
+      state.pending = true;
+      target.disabled = true;
+      try {
+        await subscribeWeekly(Number(target.form.elements.weekday.value));
+        state.user.weeklyDay = state.weekly.weekday;
+        render();
+        showToast("Đã bật thông báo trên trình duyệt này.");
+      } catch (error) {
+        showToast(error.message);
+      } finally {
+        state.pending = false;
+        target.disabled = false;
+      }
+      break;
     case "weekly-off":
       if (state.pending) break;
       state.pending = true;
@@ -742,6 +779,7 @@ document.addEventListener("click", async event => {
       try {
         await api("weekly", "DELETE");
         state.weekly = { ...state.weekly, weekday: null };
+        state.user.weeklyDay = null;
         render();
         showToast("Đã tắt thông báo hằng tuần.");
       } catch (error) {
@@ -833,9 +871,9 @@ async function start() {
   }
 }
 
-setInterval(applyTheme, 60_000);
+setInterval(() => { applyTheme(); refreshWeeklyReminder(); }, 60_000);
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) applyTheme();
+  if (!document.hidden) { applyTheme(); refreshWeeklyReminder(); }
 });
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});

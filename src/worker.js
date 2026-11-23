@@ -66,15 +66,27 @@ async function route(request, url, env) {
   if (path === "/api/weekly") {
     if (method === "GET") {
       const row = await db.prepare("SELECT weekday FROM weekly_push WHERE session_hash = ?").bind(sessionHash).first();
-      return json({ weekday: row?.weekday ?? null, key: env.VAPID_PUBLIC || "" });
+      return json({ weekday: row?.weekday ?? publicProfile(reader).weeklyDay ?? null, key: env.VAPID_PUBLIC || "" });
     }
     if (method === "PUT") {
       const { endpoint, weekday } = await readJson(request, 4096);
-      if (!env.VAPID_PUBLIC) throw new RequestError(503, "Chưa cấu hình thông báo trình duyệt.");
-      if (!validEndpoint(endpoint) || !Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
-        throw new RequestError(400, "Ngày gửi hoặc đăng ký trình duyệt không hợp lệ.");
+      if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw new RequestError(400, "Ngày gửi không hợp lệ.");
+      }
+      const saveDay = db.prepare("UPDATE readers SET profile = json_set(profile, '$.weeklyDay', ?) WHERE id = ?").bind(weekday, reader.id);
+      const changeDeviceDays = db.prepare(
+        "UPDATE weekly_push SET weekday = ? WHERE session_hash IN (SELECT token_hash FROM sessions WHERE reader_id = ?)"
+      ).bind(weekday, reader.id);
+      if (endpoint == null) {
+        await db.batch([saveDay, changeDeviceDays]);
+        return json({ weekday });
+      }
+      if (!env.VAPID_PUBLIC || !validEndpoint(endpoint)) {
+        throw new RequestError(400, "Đăng ký thông báo trình duyệt không hợp lệ.");
       }
       await db.batch([
+        saveDay,
+        changeDeviceDays,
         db.prepare("DELETE FROM weekly_push WHERE session_hash = ? AND endpoint != ?").bind(sessionHash, endpoint),
         db.prepare(
           `INSERT INTO weekly_push (endpoint, session_hash, weekday) VALUES (?, ?, ?)
@@ -84,7 +96,10 @@ async function route(request, url, env) {
       return json({ weekday });
     }
     if (method === "DELETE") {
-      await db.prepare("DELETE FROM weekly_push WHERE session_hash = ?").bind(sessionHash).run();
+      await db.batch([
+        db.prepare("DELETE FROM weekly_push WHERE session_hash IN (SELECT token_hash FROM sessions WHERE reader_id = ?)").bind(reader.id),
+        db.prepare("UPDATE readers SET profile = json_remove(profile, '$.weeklyDay') WHERE id = ?").bind(reader.id)
+      ]);
       return json({ weekday: null });
     }
   }
@@ -98,8 +113,10 @@ async function route(request, url, env) {
   if (path === "/api/profile" && method === "PUT") {
     const body = await readJson(request, 185000);
     const profile = profileFrom(body);
-    await db.prepare("UPDATE readers SET profile = ? WHERE id = ?").bind(JSON.stringify(profile), reader.id).run();
-    return json({ user: publicProfile({ ...reader, profile: JSON.stringify(profile) }) });
+    const updated = await db.prepare(
+      "UPDATE readers SET profile = json_patch(profile, ?) WHERE id = ? RETURNING profile"
+    ).bind(JSON.stringify(profile), reader.id).first();
+    return json({ user: publicProfile({ ...reader, profile: updated.profile }) });
   }
   const entryId = path.match(/^\/api\/library\/([a-z0-9-]{1,64})$/)?.[1];
   if (entryId && method === "PUT") {
