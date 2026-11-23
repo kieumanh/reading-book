@@ -1,3 +1,5 @@
+import { sendWeekly, validEndpoint } from "./weekly.js";
+
 const SESSION_AGE = 60 * 60 * 24 * 30;
 const SESSION_COOKIE = "__Host-readingbook";
 const MAX_ENTRIES = 300;
@@ -11,12 +13,13 @@ class RequestError extends Error {
 }
 
 export default {
+  scheduled: sendWeekly,
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
 
     try {
-      return await route(request, url, env.DB);
+      return await route(request, url, env);
     } catch (error) {
       if (error instanceof RequestError) return json({ error: error.message }, error.status);
       console.error(error.name, request.method, url.pathname.split("/").slice(0, 3).join("/"));
@@ -25,7 +28,8 @@ export default {
   }
 };
 
-async function route(request, url, db) {
+async function route(request, url, env) {
+  const db = env.DB;
   const { method } = request;
   const path = url.pathname;
 
@@ -35,7 +39,7 @@ async function route(request, url, db) {
 
   if (path === "/api/health" && method === "GET") {
     await db.prepare("SELECT 1").first();
-    return json({ version: "1.0.0", status: "ok" });
+    return json({ version: "1.1.0", status: "ok" });
   }
   if ((path === "/api/register" || path === "/api/login") && method === "POST") {
     return authenticate(request, db, path === "/api/register");
@@ -43,18 +47,47 @@ async function route(request, url, db) {
 
   const sessionHash = await getSessionHash(request);
   if (path === "/api/logout" && method === "POST") {
-    if (sessionHash) await db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(sessionHash).run();
+    if (sessionHash) await db.batch([
+      db.prepare("DELETE FROM weekly_push WHERE session_hash = ?").bind(sessionHash),
+      db.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(sessionHash)
+    ]);
     return json({ ok: true }, 200, sessionCookie("", 0));
   }
 
   const reader = sessionHash && await db.prepare(
-    "SELECT r.id, r.username, r.profile FROM sessions s JOIN readers r ON r.id = s.reader_id WHERE s.token_hash = ? AND s.expires_at > ?"
+    "SELECT r.id, r.username, r.profile, r.role FROM sessions s JOIN readers r ON r.id = s.reader_id WHERE s.token_hash = ? AND s.expires_at > ?"
   ).bind(sessionHash, now()).first();
 
   if (path === "/api/session" && method === "GET") {
     return json(reader ? { user: publicProfile(reader) } : { user: null });
   }
   if (!reader) throw new RequestError(401, "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.");
+
+  if (path === "/api/weekly") {
+    if (method === "GET") {
+      const row = await db.prepare("SELECT weekday FROM weekly_push WHERE session_hash = ?").bind(sessionHash).first();
+      return json({ weekday: row?.weekday ?? null, key: env.VAPID_PUBLIC || "" });
+    }
+    if (method === "PUT") {
+      const { endpoint, weekday } = await readJson(request, 4096);
+      if (!env.VAPID_PUBLIC) throw new RequestError(503, "Chưa cấu hình thông báo trình duyệt.");
+      if (!validEndpoint(endpoint) || !Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+        throw new RequestError(400, "Ngày gửi hoặc đăng ký trình duyệt không hợp lệ.");
+      }
+      await db.batch([
+        db.prepare("DELETE FROM weekly_push WHERE session_hash = ? AND endpoint != ?").bind(sessionHash, endpoint),
+        db.prepare(
+          `INSERT INTO weekly_push (endpoint, session_hash, weekday) VALUES (?, ?, ?)
+           ON CONFLICT (endpoint) DO UPDATE SET session_hash = excluded.session_hash, weekday = excluded.weekday`
+        ).bind(endpoint, sessionHash, weekday)
+      ]);
+      return json({ weekday });
+    }
+    if (method === "DELETE") {
+      await db.prepare("DELETE FROM weekly_push WHERE session_hash = ?").bind(sessionHash).run();
+      return json({ weekday: null });
+    }
+  }
 
   if (path === "/api/library" && method === "GET") {
     const { results } = await db.prepare(
@@ -66,7 +99,7 @@ async function route(request, url, db) {
     const body = await readJson(request, 185000);
     const profile = profileFrom(body);
     await db.prepare("UPDATE readers SET profile = ? WHERE id = ?").bind(JSON.stringify(profile), reader.id).run();
-    return json({ user: { username: reader.username, ...profile } });
+    return json({ user: publicProfile({ ...reader, profile: JSON.stringify(profile) }) });
   }
   const entryId = path.match(/^\/api\/library\/([a-z0-9-]{1,64})$/)?.[1];
   if (entryId && method === "PUT") {
@@ -91,13 +124,16 @@ async function route(request, url, db) {
 
 async function authenticate(request, db, registering) {
   const body = await readJson(request, 4096);
-  const username = field(body.username, 30).toLowerCase();
+  const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+  const email = username.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username);
+  const legacy = !registering && /^[a-z0-9][a-z0-9_.-]{2,29}$/.test(username);
   const password = typeof body.password === "string" ? body.password : "";
-  if (!/^[a-z0-9][a-z0-9_.-]{2,29}$/.test(username) || password.length < 10 || password.length > 128) {
-    throw new RequestError(400, "Tên đăng nhập cần 3–30 ký tự hợp lệ và mật khẩu cần 10–128 ký tự.");
+  if ((!email && !legacy) || password.length < 10 || password.length > 128) {
+    throw new RequestError(400, "Kiểm tra email hoặc tên đăng nhập và mật khẩu từ 10 đến 128 ký tự.");
   }
 
   await limitAuth(db, request.headers.get("CF-Connecting-IP") || "local", username, registering);
+  if (registering && body.confirmPassword !== password) throw new RequestError(400, "Mật khẩu xác nhận chưa khớp.");
   let reader;
   if (registering) {
     const profile = profileFrom({ name: field(body.name, 60) || username });
@@ -107,12 +143,12 @@ async function authenticate(request, db, registering) {
     const { meta } = await db.prepare(
       "INSERT INTO readers (id, username, salt, password_hash, profile) VALUES (?, ?, ?, ?, ?) ON CONFLICT (username) DO NOTHING"
     ).bind(reader.id, username, salt, passwordHash, reader.profile).run();
-    if (!meta.changes) throw new RequestError(409, "Tên đăng nhập này đã được sử dụng.");
+    if (!meta.changes) throw new RequestError(409, "Email này đã được sử dụng.");
   } else {
     reader = await db.prepare("SELECT * FROM readers WHERE username = ?").bind(username).first();
     const attempted = await derive(password, reader?.salt || "0".repeat(32));
     if (!reader || !equalHash(attempted, reader.password_hash)) {
-      throw new RequestError(401, "Tên đăng nhập hoặc mật khẩu chưa đúng.");
+      throw new RequestError(401, "Email, tên đăng nhập hoặc mật khẩu chưa đúng.");
     }
   }
 
@@ -239,7 +275,7 @@ function json(data, status = 200, cookie) {
 }
 
 function publicProfile(reader) {
-  return { username: reader.username, ...JSON.parse(reader.profile) };
+  return { ...JSON.parse(reader.profile), username: reader.username, role: reader.role || "reader" };
 }
 
 function sessionCookie(token, age) {

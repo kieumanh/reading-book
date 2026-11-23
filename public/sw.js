@@ -1,15 +1,15 @@
-const CACHE = "reading-book-v1.0.0";
-const shell = ["/", "/style.css?v=1.0.0", "/app.js?v=1.0.0", "/catalog.js", "/quotes.js",
+const CACHE = "reading-book-v1.1.0";
+const shell = ["/", "/style.css?v=1.1.0", "/app.js?v=1.1.0", "/catalog.js", "/quotes.js",
   "/assets/hero.webp", "/assets/icon-192.png", "/assets/be.woff2", "/assets/be-bold.woff2", "/assets/lora.woff2", "/assets/dancing.woff2"];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(shell)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(shell)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(
     key => key.startsWith("reading-book-") && key !== CACHE
-  ).map(key => caches.delete(key)))));
+  ).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener("fetch", event => {
@@ -29,4 +29,22 @@ self.addEventListener("fetch", event => {
       return response;
     }));
   }
+});
+
+self.addEventListener("push", event => {
+  event.waitUntil(self.registration.showNotification("Reading Book", {
+    body: "Đến hẹn đọc sách rồi. Mở thư viện để tiếp tục từ chỗ bạn đã dừng.",
+    icon: "/assets/icon-192.png",
+    tag: "reading-book-weekly"
+  }));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+    const app = windows.find(window => new URL(window.url).origin === self.location.origin);
+    if (app) return app.focus();
+    return clients.openWindow("/");
+  })());
 });

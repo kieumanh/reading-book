@@ -19,5 +19,6 @@
   "routes": [
     { "pattern": "reading-book.huongthiennature.com", "custom_domain": true }
   ],
+  "triggers": { "crons": ["0,15,30,45 12 * * *"] },
   "observability": { "enabled": true, "head_sampling_rate": 0.1 }
 }

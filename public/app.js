@@ -23,6 +23,7 @@ const content = $("#content");
 const editor = $("#editor");
 const reminder = $("#reminder");
 const sortCollator = new Intl.Collator("vi", { sensitivity: "base" });
+const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 const guestDefaults = { name: "Bạn đọc", avatar: "", theme: "auto", reminders: true, fireworks: true };
 const keys = { items: "readingbook-demo-v1", profile: "readingbook-guest-v1", reminder: "readingbook-quote-v1" };
 const state = {
@@ -36,6 +37,7 @@ const state = {
   dismissed: "",
   pending: false,
   offline: false,
+  weekly: null,
   install: null
 };
 
@@ -276,6 +278,7 @@ function settings() {
         <p class="error" role="alert" hidden></p>${button("Lưu tùy chỉnh", "", { type: "submit" })}
       </form>
     </section>
+    ${weeklySettings()}
     <section class="panel" id="install"><h2>Cài đặt trên trình duyệt</h2>
       ${state.install ? button("Cài Reading Book", "install", { glyph: "plus" }) : ""}
       <ul>
@@ -283,9 +286,59 @@ function settings() {
         <li><strong>iPhone/iPad:</strong> trong Safari, chạm <em>Chia sẻ</em> rồi chọn <em>Thêm vào màn hình chính</em>.</li>
       </ul>
     </section>
-    ${state.user ? `<section class="panel"><h2>Phiên đăng nhập</h2><p>Đang đăng nhập với tài khoản <strong>${escapeHtml(state.user.username)}</strong>.</p>
+    ${state.user ? `<section class="panel"><h2>Phiên đăng nhập</h2><p>${state.user.role === "admin" ? "Quản trị viên" : "Đang đăng nhập"} · <strong>${escapeHtml(state.user.username)}</strong></p>
       ${button("Đăng xuất", "logout", { extra: "secondary danger" })}</section>` : ""}
   </div>`;
+}
+
+function weeklySettings() {
+  const weekly = state.weekly;
+  const enabled = Number.isInteger(weekly?.weekday);
+  return `<section class="panel"><h2>Thông báo hằng tuần</h2>
+    ${state.user ? `<p>Nhận lời nhắc đọc sách lúc 19:00 (giờ Việt Nam), vào ngày bạn chọn. Lịch áp dụng cho phiên đăng nhập trên trình duyệt này.</p>
+      <form class="form" data-form="weekly">
+        <label class="control-label">Ngày gửi<select name="weekday">
+          ${weekdays.map((day, index) => `<option value="${index}" ${index === (weekly?.weekday ?? 1) ? "selected" : ""}>${day}</option>`).join("")}
+        </select></label>
+        <p class="hint">${enabled ? "Đã bật lời nhắc vào " + weekdays[weekly.weekday] + "." : "Chưa bật lời nhắc hằng tuần."}</p>
+        <p class="error" role="alert" hidden></p>
+        <div class="form-actions">
+          ${button(enabled ? "Lưu ngày gửi" : "Bật thông báo", "", { type: "submit" })}
+          ${enabled ? button("Tắt thông báo", "weekly-off", { extra: "secondary" }) : ""}
+        </div>
+      </form>` : "<p>Đăng nhập để chọn ngày gửi và bật thông báo trên trình duyệt.</p>"}
+  </section>`;
+}
+
+async function loadWeekly() {
+  const username = state.user?.username;
+  if (!username) return;
+  try {
+    const weekly = await api("weekly");
+    if (state.user?.username !== username) return;
+    state.weekly = weekly;
+    // Leave focused form fields intact while preferences are being edited.
+    if (state.view === "cai-dat" && !state.pending && !document.activeElement?.closest("form")) render();
+  } catch {
+    // The save action reports an error if the schedule cannot be reached.
+  }
+}
+
+async function subscribeWeekly(weekday) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+    throw Error("Trình duyệt này chưa hỗ trợ thông báo. Trên iPhone/iPad, hãy mở Reading Book từ màn hình chính.");
+  }
+  if (Notification.permission !== "granted" && await Notification.requestPermission() !== "granted") {
+    throw Error("Hãy cho phép thông báo cho Reading Book trong cài đặt của trình duyệt.");
+  }
+  const { key } = state.weekly || await api("weekly");
+  if (!key) throw Error("Thông báo trình duyệt chưa được cấu hình.");
+  const worker = await navigator.serviceWorker.getRegistration();
+  if (!worker?.active) throw Error("Ứng dụng đang tải. Hãy thử lại sau khi trình duyệt hoàn tất.");
+  const current = await worker.pushManager.getSubscription();
+  const subscription = current || await worker.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+  const saved = await api("weekly", "PUT", { endpoint: subscription.endpoint, weekday });
+  state.weekly = { key, ...saved };
 }
 
 function render() {
@@ -404,10 +457,9 @@ function itemDetail(item) {
 function authForm(registering) {
   openEditor(registering ? "Tạo tài khoản" : "Đăng nhập", `<form class="form" data-form="${registering ? "register" : "login"}">
     ${registering ? '<label class="control-label">Tên hiển thị<input name="name" maxlength="60" autocomplete="nickname" required></label>' : ""}
-    <label class="control-label">Tên đăng nhập<input name="username" minlength="3" maxlength="30" pattern="[a-zA-Z0-9][a-zA-Z0-9_.\\-]{2,29}" autocomplete="username" autocapitalize="none" required></label>
-    ${registering ? '<p class="hint">Dùng từ 3 đến 30 ký tự. Có thể dùng chữ không dấu, số, dấu chấm, gạch ngang và gạch dưới.</p>' : ""}
+    <label class="control-label">${registering ? "Email" : "Email hoặc tên đăng nhập"}<input type="${registering ? "email" : "text"}" name="username" maxlength="254" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" required></label>
     <label class="control-label">Mật khẩu<input name="password" type="password" minlength="10" maxlength="128" autocomplete="${registering ? "new-password" : "current-password"}" required></label>
-    ${registering ? '<p class="hint">Dùng ít nhất 10 ký tự. Riêng dữ liệu dùng thử vẫn nằm trong trình duyệt.</p>' : ""}
+    ${registering ? '<label class="control-label">Nhập lại mật khẩu<input name="confirmPassword" type="password" minlength="10" maxlength="128" autocomplete="new-password" required></label><p class="hint">Dùng ít nhất 10 ký tự.</p>' : ""}
     <p class="error" role="alert" hidden></p>
     <div class="form-actions">
       ${button(registering ? "Tạo tài khoản" : "Đăng nhập", "", { type: "submit" })}
@@ -518,7 +570,14 @@ function getItem(id) {
 async function submit(form) {
   const fields = Object.fromEntries(new FormData(form));
   const kind = form.dataset.form;
+  if (kind === "weekly") {
+    await subscribeWeekly(Number(fields.weekday));
+    render();
+    showToast("Đã lưu lịch thông báo hằng tuần.");
+    return;
+  }
   if (kind === "register" || kind === "login") {
+    if (kind === "register" && fields.password !== fields.confirmPassword) throw Error("Mật khẩu xác nhận chưa khớp.");
     const { user } = await api(kind, "POST", fields);
     try {
       state.items = (await api("library")).items;
@@ -530,7 +589,8 @@ async function submit(form) {
     state.offline = false;
     editor.close();
     render();
-    showToast("Đã đăng nhập.");
+    void loadWeekly();
+    showToast(kind === "register" ? "Đã tạo tài khoản." : "Đã đăng nhập.");
     return;
   }
   if (kind === "profile" || kind === "preferences") {
@@ -675,6 +735,22 @@ document.addEventListener("click", async event => {
       try { writeLocal(keys.reminder, state.dismissed); } catch { /* Dismissal still works in this tab. */ }
       $("#daily-reminder")?.remove();
       break;
+    case "weekly-off":
+      if (state.pending) break;
+      state.pending = true;
+      target.disabled = true;
+      try {
+        await api("weekly", "DELETE");
+        state.weekly = { ...state.weekly, weekday: null };
+        render();
+        showToast("Đã tắt thông báo hằng tuần.");
+      } catch (error) {
+        showToast(error.message);
+      } finally {
+        state.pending = false;
+        target.disabled = false;
+      }
+      break;
     case "logout":
       if (state.pending) break;
       state.pending = true;
@@ -682,6 +758,7 @@ document.addEventListener("click", async event => {
       try {
         await api("logout", "POST");
         state.user = null;
+        state.weekly = null;
         state.items = [];
         if (state.view === "tong-quan") render();
         else location.hash = "tong-quan";
@@ -748,6 +825,7 @@ async function start() {
       state.user = user;
       state.items = items;
       render();
+      void loadWeekly();
     }
   } catch {
     state.offline = true;
