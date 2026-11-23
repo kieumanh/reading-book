@@ -1,4 +1,4 @@
-import { samples, views } from "./catalog.js?v=1.3.0";
+import { samples, views } from "./catalog.js?v=1.3.1";
 import { getJourneyLevel, journeyLevelDetails, journeyOverview, journeyReward, journeyView } from "./journey.js";
 import { bookCredit, journeyProgress } from "./journey-score.js";
 import { quotes } from "./quotes.js";

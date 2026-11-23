@@ -19,10 +19,10 @@ function nearTitle(found, target) {
 async function fromPublicJson(host, pathname, query) {
   const url = new URL(pathname, host);
   url.search = new URLSearchParams(query);
-  const response = await fetch(url, {
+  const response = await fetch(url.href, {
     headers: { Accept: "application/json", "User-Agent": agent, "Api-User-Agent": agent },
-    redirect: "error",
-    signal: AbortSignal.timeout(3800)
+    redirect: "manual",
+    signal: AbortSignal.timeout(8500)
   });
   if (!response.ok) throw new Error("Reference unavailable");
   return response.json();

@@ -1,6 +1,6 @@
 # Reading Book
 
-Sổ tay theo dõi sách đọc và podcast của Hương Thiền Nature. Bản hiện tại là v1.3.0 tại [reading-book.huongthiennature.com](https://reading-book.huongthiennature.com/).
+Sổ tay theo dõi sách đọc và podcast của Hương Thiền Nature. Bản hiện tại là v1.3.1 tại [reading-book.huongthiennature.com](https://reading-book.huongthiennature.com/).
 
 ## Sử dụng
 

@@ -41,7 +41,7 @@ async function route(request, url, env, context) {
 
   if (path === "/api/health" && method === "GET") {
     await db.prepare("SELECT 1").first();
-    return json({ version: "1.3.0", status: "ok" });
+    return json({ version: "1.3.1", status: "ok" });
   }
   if ((path === "/api/register" || path === "/api/login") && method === "POST") {
     return authenticate(request, db, path === "/api/register");

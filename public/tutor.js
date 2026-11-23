@@ -4,7 +4,10 @@ import { playMam, mamScenes } from "./mam-scenes.js";
 
 const activeKey = "reading-book-tutor-active-v1";
 const localKey = scope => "reading-book-tutor-v1:" + encodeURIComponent(scope);
-const expiryFor = source => source?.sources?.length ? 6 * 86400000 : 6 * 3600000;
+const expiryFor = source => {
+  if (!source?.reachable) return 5 * 60000;
+  return source.sources?.length ? 6 * 86400000 : 6 * 3600000;
+};
 
 function stored(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -174,7 +177,7 @@ export function createTutor({ api, repaint, toast, motion, isVisible }) {
         if (generation!==check) return;
         const previous=state.mem.refs[id];
         if (reference.reachable && reference.sources?.length) state.mem.refs[id]=reference;
-        else state.mem.refs[id]={...(previous||{sources:[],related:[]}),checkedAt:Date.now()};
+        else state.mem.refs[id]={...(previous||{sources:[],related:[]}),reachable:reference.reachable,checkedAt:Date.now()};
         const ordered=Object.entries(state.mem.refs).sort((a,b)=>b[1].checkedAt-a[1].checkedAt);
         state.mem.refs=Object.fromEntries(ordered.slice(0,120));
         persist();

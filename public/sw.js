@@ -1,7 +1,7 @@
-const CACHE = "reading-book-v1.3.0";
-const shell = ["/", "/style.css?v=1.3.0", "/app.js?v=1.3.0", "/catalog.js?v=1.3.0", "/quotes.js",
-  "/journey.js", "/journey-score.js", "/journey-levels.js", "/journey-badges.js", "/journey.css?v=1.3.0", "/assets/journey.webp",
-  "/learning.css?v=1.3.0", "/auth-page.js", "/mam-scenes.js", "/tutor.js", "/tutor-core.js", "/tutor-view.js",
+const CACHE = "reading-book-v1.3.1";
+const shell = ["/", "/style.css?v=1.3.1", "/app.js?v=1.3.1", "/catalog.js?v=1.3.1", "/quotes.js",
+  "/journey.js", "/journey-score.js", "/journey-levels.js", "/journey-badges.js", "/journey.css?v=1.3.1", "/assets/journey.webp",
+  "/learning.css?v=1.3.1", "/auth-page.js", "/mam-scenes.js", "/tutor.js", "/tutor-core.js", "/tutor-view.js",
   "/assets/mam-read.webp", "/assets/mam-guide.webp", "/assets/mam-celebrate.webp", "/assets/mam-think.webp", "/assets/hero.webp", "/assets/icon-192.png", "/assets/be.woff2", "/assets/be-bold.woff2", "/assets/lora.woff2", "/assets/dancing.woff2"];
 
 self.addEventListener("install", event => {
