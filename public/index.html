@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#244636">
+  <meta name="description" content="Reading Book là sổ tay để theo dõi sách đang đọc, podcast đang nghe và lưu lại từng chương bạn đã đi qua.">
+  <meta name="application-name" content="Reading Book">
+  <meta property="og:site_name" content="Reading Book">
+  <meta property="og:title" content="Reading Book · Mỗi chương, một bước.">
+  <meta property="og:description" content="Theo dõi sách và podcast theo nhịp của bạn.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://reading-book.huongthiennature.com/">
+  <meta property="og:image" content="https://reading-book.huongthiennature.com/assets/hero.webp">
+  <link rel="canonical" href="https://reading-book.huongthiennature.com/">
+  <link rel="icon" type="image/png" href="/assets/icon-192.png">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="preload" href="/assets/hero.webp" as="image">
+  <link rel="stylesheet" href="/style.css?v=1.0.0">
+  <script src="/app.js?v=1.0.0" type="module"></script>
+  <title>Reading Book · Mỗi chương, một bước.</title>
+</head>
+<body>
+  <a class="skip" href="#content">Bỏ qua điều hướng</a>
+  <aside class="sidebar">
+    <a class="brand" href="#tong-quan">
+      <img src="/assets/icon-192.png" width="45" height="45" alt="">
+      <span>Reading Book<small>Hương Thiền Nature</small></span>
+    </a>
+    <nav id="navigation" aria-label="Điều hướng chính"></nav>
+    <div class="side-footer">
+      <a class="sidebar-home" href="https://huongthiennature.com/" target="_blank" rel="noopener">Hương Thiền Nature ↗</a>
+      <small>v1.0.0</small>
+    </div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <span class="mobile-brand">Reading Book</span>
+      <div class="breadcrumb" id="breadcrumb">Tổng quan</div>
+      <div class="top-actions">
+        <button id="bell" class="round icon-button" type="button" data-action="reminder" aria-label="Mở lời nhắc đọc sách" aria-haspopup="dialog"></button>
+        <button id="account" class="account-button" type="button" data-action="account"></button>
+      </div>
+    </header>
+    <main id="content" tabindex="-1">
+      <div class="intro">
+        <h1>Hôm nay đọc gì?</h1>
+      </div>
+      <section class="hero" aria-label="Chào mừng đến Reading Book">
+        <div class="hero-content">
+          <p class="hero-script">Mỗi chương, một bước.</p>
+          <h2>Ghé lại cùng<br>một trang sách.</h2>
+          <p>Đọc, nghe và lưu lại tiến độ theo nhịp của bạn.</p>
+        </div>
+      </section>
+      <noscript><p>Bật JavaScript để theo dõi tiến độ sách và podcast.</p></noscript>
+    </main>
+    <footer class="mobile-footer">Reading Book · v1.0.0</footer>
+  </div>
+  <dialog id="editor" aria-labelledby="dialog-title"></dialog>
+  <dialog id="reminder" aria-labelledby="reminder-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

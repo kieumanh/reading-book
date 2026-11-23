@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Sitemap: https://reading-book.huongthiennature.com/sitemap.xml

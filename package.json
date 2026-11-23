@@ -1,0 +1,11 @@
+{
+  "name": "readingbook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/worker.js && node --check public/app.js && node --check public/catalog.js && node --check public/quotes.js && node --check public/sw.js",
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
+  }
+}

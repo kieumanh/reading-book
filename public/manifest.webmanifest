@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Reading Book",
+  "short_name": "Reading Book",
+  "description": "Theo dõi sách đọc và podcast.",
+  "lang": "vi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#244636",
+  "background_color": "#f6f3ea",
+  "icons": [
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

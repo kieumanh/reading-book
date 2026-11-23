@@ -1,0 +1,23 @@
+{
+  "name": "reading-book",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-11-23",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "reading-book",
+      "database_id": "d895d5a1-0474-41c6-9dff-8897b5667f49"
+    }
+  ],
+  "routes": [
+    { "pattern": "reading-book.huongthiennature.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 }
+}
