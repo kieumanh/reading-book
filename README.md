@@ -1,6 +1,6 @@
 # Reading Book
 
-Sổ tay theo dõi sách đọc và podcast của Hương Thiền Nature. Bản hiện tại là v1.1.0 tại [reading-book.huongthiennature.com](https://reading-book.huongthiennature.com/).
+Sổ tay theo dõi sách đọc và podcast của Hương Thiền Nature. Bản hiện tại là v1.2.0 tại [reading-book.huongthiennature.com](https://reading-book.huongthiennature.com/).
 
 ## Sử dụng
 
@@ -8,7 +8,7 @@ Sổ tay theo dõi sách đọc và podcast của Hương Thiền Nature. Bản 
 - Tạo tài khoản riêng bằng email và mật khẩu để đồng bộ hồ sơ, sách và tiến độ giữa thiết bị. Tài khoản mới có thư viện trống. Tài khoản cũ vẫn đăng nhập bằng tên đã dùng.
 - Dùng `Thêm sách` hoặc `Thêm podcast` để nhập tác giả, ảnh bìa, tóm tắt, thể loại và số chương hoặc tập. Có thể lưu liên kết và vị trí dừng.
 - Mở một mục để cập nhật tiến độ. Dấu sao đưa mục còn dở lên phần ưu tiên.
-- Lời nhắc tiếng Việt có thể đóng, mở lại từ chuông hoặc tắt trong cài đặt. Giao diện tự đổi theo giờ thiết bị hoặc có thể giữ sáng, tối.
+- Mở **Hành trình** để xem 111 chặng, huy hiệu, vị trí hiện tại và các lời chúc đã mở. Mỗi chương sách ghi 1 XP và mỗi sách hoàn thành ghi thêm 1 XP. Podcast vẫn được theo dõi ở thư viện riêng. XP đã ghi được giữ khi sửa tiến độ hoặc xóa mục sách. Mỗi cấp từ 1 đến 111 có ngưỡng XP bằng 2^(cấp − 1).\n- Lời nhắc tiếng Việt có thể đóng, mở lại từ chuông hoặc tắt trong cài đặt. Giao diện tự đổi theo giờ thiết bị hoặc có thể giữ sáng, tối.
 - Trong Cài đặt → Thông báo hằng tuần, chọn ngày để lời nhắc hiện trong ứng dụng từ 19:00 giờ Việt Nam. Nếu máy chủ có cấu hình Web Push, bạn có thể bật thêm thông báo trên từng trình duyệt.
 - Cài ứng dụng từ menu trình duyệt. Ứng dụng có thể mở lại trong chế độ dùng thử khi mất mạng sau lần tải đầu. Đăng nhập và đồng bộ cần kết nối.
 

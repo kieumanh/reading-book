@@ -1,4 +1,6 @@
-import { samples, views } from "./catalog.js";
+import { samples, views } from "./catalog.js?v=1.2.0";
+import { getJourneyLevel, journeyLevelDetails, journeyOverview, journeyReward, journeyView } from "./journey.js";
+import { bookCredit, journeyProgress } from "./journey-score.js";
 import { quotes } from "./quotes.js";
 
 const ICONS = {
@@ -13,6 +15,7 @@ const ICONS = {
   chevron: '<path d="m7 10 5 5 5-5"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
+  map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15"/>',
   chart: '<path d="M4 4v16h16M8 15l4-4 3 2 5-7"/>',
   spark: '<path d="M12 2c0 6-4 10-10 10 6 0 10 4 10 10 0-6 4-10 10-10-6 0-10-4-10-10ZM19 2v4m-2-2h4"/>',
   user: '<circle cx="12" cy="8" r="3"/><path d="M5 20v-2a7 7 0 0 1 14 0v2"/>'
@@ -22,15 +25,18 @@ const $ = selector => document.querySelector(selector);
 const content = $("#content");
 const editor = $("#editor");
 const reminder = $("#reminder");
+const reward = $("#journey-reward");
 const sortCollator = new Intl.Collator("vi", { sensitivity: "base" });
 const weekdays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
 const guestDefaults = { name: "Bạn đọc", avatar: "", theme: "auto", reminders: true, fireworks: true };
-const keys = { items: "readingbook-demo-v1", profile: "readingbook-guest-v1", reminder: "readingbook-quote-v1" };
+const keys = { items: "readingbook-demo-v1", profile: "readingbook-guest-v1", reminder: "readingbook-quote-v1", journey: "readingbook-demo-journey-v1" };
 const state = {
   user: null,
   guest: readLocal(keys.profile, guestDefaults),
   demo: readLocal(keys.items, samples),
   items: [],
+  journey: null,
+  demoJourney: null,
   view: "",
   filters: { query: "", category: "", status: "" },
   quote: 0,
@@ -175,6 +181,7 @@ function overview() {
         ${feature ? button(isBook(feature) ? "Đọc tiếp" : "Nghe tiếp", "detail", { extra: "hero-button", glyph: "arrow", data: `data-id="${feature.id}"` }) : navButton("Mở thư viện", "sach-doc", false)}
       </div>
     </section>
+    ${journeyOverview(journeyRecord())}
     <div id="weekly-reading-reminder">${weeklyReadingReminder()}</div>
     <section class="section">
       ${sectionHead("Tiến độ thư viện")}
@@ -377,7 +384,14 @@ function render() {
   account.setAttribute("aria-label", state.user ? "Cài đặt hồ sơ" : "Đăng nhập vào Reading Book");
   account.innerHTML = `<span class="avatar">${avatar ? `<img src="${avatar}" alt="">` : state.user ? escapeHtml(user.name.trim()[0]?.toUpperCase()) : icon("user")}</span>
     <span><strong>${escapeHtml(user.name)}</strong><small>${state.user ? "Hồ sơ" : "Dùng thử"}</small></span><span>${icon("chevron")}</span>`;
-  content.innerHTML = state.view === "tong-quan" ? overview() : state.view === "cai-dat" ? settings() : library();
+  switch (state.view) {
+    case "tong-quan": content.innerHTML = overview(); break;
+    case "cai-dat": content.innerHTML = settings(); break;
+    case "hanh-trinh":
+      content.innerHTML = journeyView(journeyRecord(), { demo: !state.user, avatar: avatar ? `<img src="${avatar}" alt="">` : "" });
+      break;
+    default: content.innerHTML = library();
+  }
   if (state.offline) content.insertAdjacentHTML("afterbegin", '<p class="note">Không kết nối được tài khoản. Dữ liệu đang hiển thị thuộc chế độ dùng thử.</p>');
   refreshResults();
   applyTheme();
@@ -499,18 +513,110 @@ function openReminder() {
   if (!reminder.open) reminder.showModal();
   else reminder.querySelector('[data-action="next-quote"]').focus();
 
+  burstFireworks(reminder);
+}
+
+function burstFireworks(dialog, count = 20) {
   if (!profile().fireworks || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < count; i++) {
     const bit = document.createElement("i");
-    const angle = Math.PI * 2 * i / 20;
-    const distance = (i % 3) * 17 + 55;
+    const angle = Math.PI * 2 * i / count;
+    const distance = (i % 3) * 20 + 62;
     bit.className = "particle";
     bit.setAttribute("aria-hidden", "true");
     bit.style.setProperty("--dx", `${Math.round(Math.cos(angle) * distance)}px`);
     bit.style.setProperty("--dy", `${Math.round(Math.sin(angle) * distance)}px`);
-    bit.style.setProperty("--particle", ["#eab56d", "#74a482", "#ba754c"][i % 3]);
+    bit.style.setProperty("--particle", ["#eab56d", "#74a482", "#ba754c", "#c5a9dc"][i % 4]);
+    bit.style.setProperty("--origin-x", `${[32, 68, 50][i % 3]}%`);
+    bit.style.setProperty("--origin-y", `${[29, 34, 20][i % 3]}%`);
+    bit.style.setProperty("--delay", `${(i % 3) * 105}ms`);
     bit.addEventListener("animationend", () => bit.remove(), { once: true });
-    reminder.append(bit);
+    dialog.append(bit);
+  }
+}
+
+function journeyRecord() {
+  return state.user ? state.journey : state.demoJourney;
+}
+
+function trackDemoReading(journal, id, credit) {
+  const previous = journal.credits[id] || { chapters: 0, books: 0 };
+  const chapters = Math.max(previous.chapters, credit.chapters);
+  const books = Math.max(previous.books, credit.books);
+  if (!chapters && !books) return;
+  journal.chapters += chapters - previous.chapters;
+  journal.books += books - previous.books;
+  journal.credits[id] = { chapters, books };
+}
+
+function loadDemoJourney() {
+  const stored = readLocal(keys.journey, null);
+  const journal = { seen: stored?.seen || 0, chapters: 0, books: 0, credits: Object.create(null) };
+  for (const [id, credit] of Object.entries(stored?.credits || {})) {
+    if (Number.isSafeInteger(credit?.chapters) && credit.chapters >= 0 && [0, 1].includes(credit.books)) {
+      trackDemoReading(journal, id, credit);
+    }
+  }
+  for (const item of state.demo) trackDemoReading(journal, item.id, bookCredit(item));
+  if (!stored) journal.seen = journeyProgress(journal).level;
+  return journal;
+}
+
+function persistDemoJourney() {
+  try { writeLocal(keys.journey, state.demoJourney); } catch { /* The open tab retains the game progress. */ }
+}
+
+function applyJourney(record) {
+  if (!record) return;
+  state.journey = { ...record, seen: Math.max(record.seen, state.journey?.seen || 0) };
+}
+
+function focusJourney(target) {
+  const node = $(target);
+  if (!node) return;
+  node.focus({ preventScroll: true });
+  node.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function showNewJourneyReward(withinDialog = false) {
+  const { seen, level } = journeyProgress(journeyRecord());
+  if (seen >= level || editor.open || reminder.open || (reward.open && !withinDialog)) return false;
+  const next = getJourneyLevel(seen + 1);
+  reward.dataset.level = String(next.level);
+  reward.innerHTML = journeyReward(next, level - next.level);
+  if (reward.open) reward.querySelector("[autofocus]").focus();
+  else reward.showModal();
+  burstFireworks(reward, 33);
+  return true;
+}
+
+async function saveRewardSeen(username, level) {
+  try {
+    const { seen } = await api("journey/seen", "PUT", { level });
+    if (state.user?.username === username && state.journey) {
+      state.journey.seen = Math.max(seen, state.journey.seen);
+    }
+  } catch {
+    // The next successful acknowledgement includes all earlier levels.
+  }
+}
+
+function finishJourneyReward(continueQueue) {
+  const record = journeyRecord();
+  if (!reward.open || !record) return;
+  const seen = Number(reward.dataset.level);
+  record.seen = Math.max(record.seen, seen);
+
+  if (state.user) void saveRewardSeen(state.user.username, seen);
+  else persistDemoJourney();
+
+  if (continueQueue && showNewJourneyReward(true)) return;
+  reward.close();
+  if (state.view === "hanh-trinh") {
+    const scrollPosition = window.scrollY;
+    render();
+    window.scrollTo(0, scrollPosition);
+    ($('[data-action="journey-new"]') || $("#journey-map-title"))?.focus({ preventScroll: true });
   }
 }
 
@@ -530,10 +636,13 @@ async function saveItem(item) {
   if (state.user) {
     const result = await api("library/" + item.id, "PUT", item);
     state.items = [result.item, ...state.items.filter(previous => previous.id !== item.id)];
+    applyJourney(result.journey);
   } else {
     const library = [{ ...item, updated: Date.now() }, ...state.demo.filter(previous => previous.id !== item.id)];
     writeLocal(keys.items, library);
     state.demo = library;
+    trackDemoReading(state.demoJourney, item.id, bookCredit(item));
+    persistDemoJourney();
   }
 }
 
@@ -601,9 +710,12 @@ async function submit(form) {
     if (kind === "register" && fields.password !== fields.confirmPassword) throw Error("Mật khẩu xác nhận chưa khớp.");
     const { user } = await api(kind, "POST", fields);
     try {
-      state.items = (await api("library")).items;
+      const { items, journey } = await api("library");
+      state.items = items;
+      state.journey = journey;
     } catch (error) {
       state.items = [];
+      state.journey = null;
       showToast(error.message);
     }
     state.user = user;
@@ -612,6 +724,7 @@ async function submit(form) {
     render();
     void loadWeekly();
     showToast(kind === "register" ? "Đã tạo tài khoản." : "Đã đăng nhập.");
+    showNewJourneyReward();
     return;
   }
   if (kind === "profile" || kind === "preferences") {
@@ -650,7 +763,7 @@ async function submit(form) {
     await saveItem({ ...item, done, checkpoint });
     editor.close();
     render();
-    showToast(done === total ? "Đã hoàn thành. Chúc mừng bạn!" : "Đã lưu tiến độ.");
+    if (!showNewJourneyReward()) showToast(done === total ? "Đã hoàn thành. Chúc mừng bạn!" : "Đã lưu tiến độ.");
     return;
   }
 
@@ -677,7 +790,7 @@ async function submit(form) {
   });
   editor.close();
   render();
-  showToast("Đã lưu vào thư viện.");
+  if (!showNewJourneyReward()) showToast("Đã lưu vào thư viện.");
 }
 
 document.addEventListener("submit", async event => {
@@ -712,6 +825,19 @@ document.addEventListener("click", async event => {
     case "edit": if (item) openItemForm(item); break;
     case "detail": if (item) itemDetail(item); break;
     case "close": if (!state.pending) editor.close(); break;
+    case "journey-detail": {
+      const level = getJourneyLevel(Number(target.dataset.level));
+      if (level) openEditor(`Cấp ${level.level} · ${level.title}`, journeyLevelDetails(level, journeyProgress(journeyRecord())));
+      break;
+    }
+    case "journey-location": {
+      const level = journeyProgress(journeyRecord()).level;
+      focusJourney(level ? `#journey-stop-${level}` : "#journey-start");
+      break;
+    }
+    case "journey-new": showNewJourneyReward(); break;
+    case "journey-reward-next": finishJourneyReward(true); break;
+    case "journey-reward-later": finishJourneyReward(false); break;
     case "account":
       if (state.user) location.hash = "cai-dat";
       else authForm(false);
@@ -798,6 +924,7 @@ document.addEventListener("click", async event => {
         state.user = null;
         state.weekly = null;
         state.items = [];
+        state.journey = null;
         if (state.view === "tong-quan") render();
         else location.hash = "tong-quan";
         showToast("Đã đăng xuất.");
@@ -824,6 +951,7 @@ document.addEventListener("input", event => {
 
 document.addEventListener("change", event => {
   const { id, value } = event.target;
+  if (id === "journey-land-picker") focusJourney(`#journey-land-${Number(value)}`);
   if (id === "category-filter" || id === "status-filter") {
     state.filters[id === "category-filter" ? "category" : "status"] = value;
     refreshResults();
@@ -833,6 +961,11 @@ document.addEventListener("change", event => {
     editor.querySelector('[data-type-label="title"]').textContent = podcast ? "Tên podcast" : "Tên sách";
     editor.querySelector('[data-type-label="total"]').textContent = podcast ? "Tổng số tập" : "Tổng số chương";
   }
+});
+
+reward.addEventListener("cancel", event => {
+  event.preventDefault();
+  finishJourneyReward(false);
 });
 
 editor.addEventListener("cancel", event => {
@@ -853,17 +986,20 @@ window.addEventListener("beforeinstallprompt", event => {
 });
 
 async function start() {
+  state.demoJourney = loadDemoJourney();
   state.quote = getDay() % quotes.length;
   state.dismissed = readLocal(keys.reminder, "");
   render();
   try {
     const { user } = await api("session");
     if (user) {
-      const { items } = await api("library");
+      const { items, journey } = await api("library");
       state.user = user;
       state.items = items;
+      state.journey = journey;
       render();
       void loadWeekly();
+      showNewJourneyReward();
     }
   } catch {
     state.offline = true;

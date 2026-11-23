@@ -1,10 +1,10 @@
 {
   "name": "readingbook",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/worker.js && node --check src/weekly.js && node --check public/app.js && node --check public/catalog.js && node --check public/quotes.js && node --check public/sw.js",
+    "check": "node --check src/worker.js && node --check src/weekly.js && node --check public/app.js && node --check public/catalog.js && node --check public/quotes.js && node --check public/sw.js && node --check public/journey.js && node --check public/journey-levels.js && node --check public/journey-score.js && node --check public/journey-badges.js",
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy"
   }

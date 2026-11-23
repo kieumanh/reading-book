@@ -1,5 +1,6 @@
-const CACHE = "reading-book-v1.1.0";
-const shell = ["/", "/style.css?v=1.1.0", "/app.js?v=1.1.0", "/catalog.js", "/quotes.js",
+const CACHE = "reading-book-v1.2.0";
+const shell = ["/", "/style.css?v=1.2.0", "/app.js?v=1.2.0", "/catalog.js?v=1.2.0", "/quotes.js",
+  "/journey.js", "/journey-score.js", "/journey-levels.js", "/journey-badges.js", "/journey.css?v=1.2.0", "/assets/journey.webp",
   "/assets/hero.webp", "/assets/icon-192.png", "/assets/be.woff2", "/assets/be-bold.woff2", "/assets/lora.woff2", "/assets/dancing.woff2"];
 
 self.addEventListener("install", event => {

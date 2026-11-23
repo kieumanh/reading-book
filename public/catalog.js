@@ -41,6 +41,7 @@ export const views = [
   { id: "tong-quan", label: "Tổng quan", mobile: "Tổng quan", icon: "dashboard" },
   { id: "sach-doc", label: "Sách đọc", mobile: "Sách", icon: "book" },
   { id: "podcast", label: "Podcast", mobile: "Podcast", icon: "headphones" },
+  { id: "hanh-trinh", label: "Hành trình", mobile: "Hành trình", icon: "map" },
   { id: "danh-dau", label: "Đánh dấu sao", mobile: "Có sao", icon: "star" },
   { id: "cai-dat", label: "Cài đặt", mobile: "Cài đặt", icon: "settings" }
 ];

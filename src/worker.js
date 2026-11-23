@@ -1,4 +1,5 @@
 import { sendWeekly, validEndpoint } from "./weekly.js";
+import { journeyProgress, MAX_READING_LEVEL } from "../public/journey-score.js";
 
 const SESSION_AGE = 60 * 60 * 24 * 30;
 const SESSION_COOKIE = "__Host-readingbook";
@@ -39,7 +40,7 @@ async function route(request, url, env) {
 
   if (path === "/api/health" && method === "GET") {
     await db.prepare("SELECT 1").first();
-    return json({ version: "1.1.0", status: "ok" });
+    return json({ version: "1.2.0", status: "ok" });
   }
   if ((path === "/api/register" || path === "/api/login") && method === "POST") {
     return authenticate(request, db, path === "/api/register");
@@ -105,10 +106,27 @@ async function route(request, url, env) {
   }
 
   if (path === "/api/library" && method === "GET") {
-    const { results } = await db.prepare(
-      "SELECT payload FROM entries WHERE reader_id = ? ORDER BY updated_at DESC, id"
-    ).bind(reader.id).all();
-    return json({ items: results.map(row => JSON.parse(row.payload)) });
+    const [items, progress] = await db.batch([
+      db.prepare("SELECT payload FROM entries WHERE reader_id = ? ORDER BY updated_at DESC, id").bind(reader.id),
+      journeyQuery(db, reader.id)
+    ]);
+    return json({ items: items.results.map(row => JSON.parse(row.payload)), journey: progress.results[0] });
+  }
+  if (path === "/api/journey/seen" && method === "PUT") {
+    const { level } = await readJson(request, 256);
+    if (!Number.isInteger(level) || level < 1 || level > MAX_READING_LEVEL) {
+      throw new RequestError(400, "Cấp độ không hợp lệ.");
+    }
+    const progress = await journeyQuery(db, reader.id).first();
+    if (level > journeyProgress(progress).level) {
+      throw new RequestError(400, "Huy hiệu này chưa được mở.");
+    }
+    const saved = await db.prepare(
+      `INSERT INTO reading_awards_seen (reader_id, level) VALUES (?, ?)
+       ON CONFLICT (reader_id) DO UPDATE SET level = max(level, excluded.level)
+       RETURNING level`
+    ).bind(reader.id, level).first();
+    return json({ seen: saved.level });
   }
   if (path === "/api/profile" && method === "PUT") {
     const body = await readJson(request, 185000);
@@ -121,15 +139,18 @@ async function route(request, url, env) {
   const entryId = path.match(/^\/api\/library\/([a-z0-9-]{1,64})$/)?.[1];
   if (entryId && method === "PUT") {
     const item = entryFrom(await readJson(request, 185000), entryId);
-    const { meta } = await db.prepare(
-      `INSERT INTO entries (reader_id, id, updated_at, payload)
-       SELECT ?1, ?2, ?3, ?4
-       WHERE EXISTS (SELECT 1 FROM entries WHERE reader_id = ?1 AND id = ?2)
-         OR (SELECT COUNT(*) FROM entries WHERE reader_id = ?1) < ?5
-       ON CONFLICT (reader_id, id) DO UPDATE SET updated_at = excluded.updated_at, payload = excluded.payload`
-    ).bind(reader.id, entryId, item.updated, JSON.stringify(item), MAX_ENTRIES).run();
-    if (!meta.changes) throw new RequestError(409, "Thư viện đã đạt giới hạn 300 mục.");
-    return json({ item });
+    const [saved, progress] = await db.batch([
+      db.prepare(
+        `INSERT INTO entries (reader_id, id, updated_at, payload)
+         SELECT ?1, ?2, ?3, ?4
+         WHERE EXISTS (SELECT 1 FROM entries WHERE reader_id = ?1 AND id = ?2)
+           OR (SELECT COUNT(*) FROM entries WHERE reader_id = ?1) < ?5
+         ON CONFLICT (reader_id, id) DO UPDATE SET updated_at = excluded.updated_at, payload = excluded.payload`
+      ).bind(reader.id, entryId, item.updated, JSON.stringify(item), MAX_ENTRIES),
+      journeyQuery(db, reader.id)
+    ]);
+    if (!saved.meta.changes) throw new RequestError(409, "Thư viện đã đạt giới hạn 300 mục.");
+    return json({ item, journey: progress.results[0] });
   }
   if (entryId && method === "DELETE") {
     await db.prepare("DELETE FROM entries WHERE reader_id = ? AND id = ?").bind(reader.id, entryId).run();
@@ -137,6 +158,15 @@ async function route(request, url, env) {
   }
 
   throw new RequestError(404, "Yêu cầu không tồn tại.");
+}
+
+function journeyQuery(db, readerId) {
+  return db.prepare(
+    `SELECT CAST(coalesce(sum(chapters), 0) AS TEXT) AS chapters,
+            CAST(coalesce(sum(completed), 0) AS TEXT) AS books,
+            coalesce((SELECT level FROM reading_awards_seen WHERE reader_id = ?1), 0) AS seen
+     FROM reading_credit WHERE reader_id = ?1`
+  ).bind(readerId);
 }
 
 async function authenticate(request, db, registering) {
